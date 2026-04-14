@@ -61,7 +61,7 @@ export default function LoginPage() {
                 style={{ fontVariationSettings: "'FILL' 1" }}>mic</span>
             </div>
             <h1 className="font-headline font-extrabold text-3xl tracking-tight text-primary">VedaVoice</h1>
-            <p className="text-on-surface-variant font-medium mt-1 text-sm">Apni dukaan ka hisaab, awaaz se</p>
+            <p className="text-on-surface-variant font-medium mt-1 text-sm text-center">Payroll & Site Safety, <br/>Managed by Voice & AI Simulation</p>
           </div>
 
           {/* Mode tabs */}

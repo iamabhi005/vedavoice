@@ -1,36 +1,44 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Transaction, ExtractResult } from '@/types'
 
-export function useLedger() {
+export function useLedger(userId?: string) {
     const [transactions, setTransactions] = useState<Transaction[]>([])
     const [loading, setLoading] = useState(true)
 
     // ── Initial fetch ────────────────────────────────────────────────────────
-    useEffect(() => {
-        async function fetchTransactions() {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(50)
-
-            if (!error && data) setTransactions(data)
+    const fetchTransactions = useCallback(async () => {
+        if (!userId) {
             setLoading(false)
+            return
         }
 
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50)
+
+        if (!error && data) setTransactions(data)
+        setLoading(false)
+    }, [userId])
+
+    useEffect(() => {
         fetchTransactions()
-    }, [])
+    }, [fetchTransactions])
 
     // ── Realtime subscription ─────────────────────────────────────────────────
     useEffect(() => {
+        if (!userId) return
+
         const channel = supabase
-            .channel('transactions-changes')
+            .channel(`transactions-${userId}`)
             .on(
                 'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'transactions' },
+                { event: 'INSERT', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
                 (payload) => {
                     setTransactions(prev => [payload.new as Transaction, ...prev])
                 }
@@ -38,10 +46,10 @@ export function useLedger() {
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [])
+    }, [userId])
 
     // ── Add confirmed transaction to ledger ───────────────────────────────────
-    async function addTransaction(result: ExtractResult, transcript: string) {
+    async function addTransaction(result: ExtractResult, transcript: string, worker_id?: string | null) {
         if (!result.name || !result.amount_int) return null
 
         const { data: { user } } = await supabase.auth.getUser()
@@ -51,12 +59,16 @@ export function useLedger() {
             .from('transactions')
             .insert({
                 user_id: user.id,
+                worker_id: worker_id || null,
                 name: result.name,
+                qualifier: result.qualifier || null,
                 amount: result.amount_int,
                 amount_raw: result.amount_raw,
+                unit: result.unit ?? 'INR',
                 action: result.action,
                 confidence: result.confidence,
                 transcript,
+                notes: result.notes || null,
             })
             .select()
             .single()
@@ -89,12 +101,12 @@ export function useLedger() {
 
     // ── Summary stats ─────────────────────────────────────────────────────────
     const totalUdhaar = transactions
-        .filter(t => t.action === 'UDHAAR')
+        .filter(t => t.action === 'UDHAAR' || t.action === 'ADVANCE' || t.action === 'MATERIAL')
         .reduce((sum, t) => sum + t.amount, 0)
 
     const today = new Date().toDateString()
     const todayMila = transactions
-        .filter(t => t.action === 'PAYMENT' && new Date(t.created_at).toDateString() === today)
+        .filter(t => (t.action === 'PAYMENT' || t.action === 'RECEIPT') && new Date(t.created_at).toDateString() === today)
         .reduce((sum, t) => sum + t.amount, 0)
 
     const uniqueCustomers = new Set(transactions.map(t => t.name)).size
