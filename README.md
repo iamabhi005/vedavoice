@@ -218,4 +218,4 @@ See `LICENSE` for full terms.
 
 ---
 
-*Built for Mind Installers Hackathon 4.0 · April 2025*
+*Built for Mind Installers Hackathon 4.0 · April 2026*
